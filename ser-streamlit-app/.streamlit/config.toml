@@ -1,0 +1,13 @@
+[server]
+# Cegah Streamlit hang saat stop — file watcher transformers butuh torchvision
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#2563eb"
+backgroundColor = "#0f172a"
+secondaryBackgroundColor = "#1e293b"
+textColor = "#f8fafc"
+font = "sans serif"
