@@ -124,32 +124,44 @@ def _extract_state_dict(checkpoint: object) -> dict[str, torch.Tensor]:
     )
 
 
-def ensure_model_downloaded() -> Path:
+def ensure_model_downloaded(model_path: Path | str | None = None) -> Path:
     """Unduh checkpoint dari Google Drive jika file belum ada secara lokal."""
-    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    path = Path(model_path) if model_path is not None else MODEL_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-    if MODEL_PATH.exists():
-        return MODEL_PATH
+    if path.exists():
+        return path
 
     if not MODEL_GDRIVE_FILE_ID or MODEL_GDRIVE_FILE_ID == "PASTE_FILE_ID_DI_SINI":
         raise FileNotFoundError(
-            f"File model tidak ditemukan: {MODEL_PATH}\n"
+            f"File model tidak ditemukan: {path}\n"
             "Set MODEL_GDRIVE_FILE_ID di model.py atau letakkan checkpoint secara manual."
         )
 
     print("Downloading model from Google Drive...")
-    gdown.download(MODEL_URL, str(MODEL_PATH), quiet=False)
+    gdown.download(MODEL_URL, str(path), quiet=False)
 
-    if not MODEL_PATH.exists():
-        raise RuntimeError(f"Unduhan model gagal. File tidak ditemukan: {MODEL_PATH}")
+    if not path.exists():
+        raise RuntimeError(f"Unduhan model gagal. File tidak ditemukan: {path}")
 
-    return MODEL_PATH
+    return path
 
 
-def load_model(device: torch.device | str = "cpu", dropout: float = DEFAULT_DROPOUT) -> WavLMSERModel:
-    """Muat model WavLM SER (auto-download checkpoint jika perlu)."""
+def load_model(
+    model_path: str | Path | None = None,
+    device: torch.device | str = "cpu",
+    dropout: float = DEFAULT_DROPOUT,
+) -> WavLMSERModel:
+    """Muat model WavLM SER (auto-download checkpoint jika perlu).
+
+    Pemanggilan yang didukung:
+    - load_model()
+    - load_model(device="cuda")
+    - load_model(model_path, device)
+    - load_model(model_path=model_path, device=device)
+    """
     device = torch.device(device)
-    resolved_path = ensure_model_downloaded()
+    resolved_path = ensure_model_downloaded(model_path)
 
     try:
         model = WavLMSERModel(dropout=dropout)
