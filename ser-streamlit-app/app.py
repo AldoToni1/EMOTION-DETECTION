@@ -9,7 +9,7 @@ import streamlit as st
 import torch
 from transformers import AutoFeatureExtractor
 
-from model import MODEL_PATH, PRETRAINED_MODEL, load_model
+from ser_model import MODEL_PATH, PRETRAINED_MODEL, load_model
 from utils import (
     ID2LABEL,
     LABEL2ID,
