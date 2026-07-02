@@ -7,9 +7,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import librosa
 import numpy as np
 import pandas as pd
+import soundfile as sf
 import torch
 import torch.nn.functional as F
 import torchaudio
@@ -32,6 +32,15 @@ LABEL2ID = {
 ID2LABEL = {idx: label for label, idx in LABEL2ID.items()}
 
 
+def _load_via_soundfile(path: str) -> tuple[torch.Tensor, int]:
+    """Fallback decode audio tanpa librosa/numba (kompatibel Python 3.14)."""
+    data, sample_rate = sf.read(path, dtype="float32", always_2d=True)
+    waveform = torch.from_numpy(data.T).float()
+    if waveform.ndim == 1:
+        waveform = waveform.unsqueeze(0)
+    return waveform, int(sample_rate)
+
+
 def load_audio(file: io.BytesIO | str | Path) -> tuple[torch.Tensor, int]:
     """Muat audio dari file upload Streamlit (.wav / .mp3)."""
     if isinstance(file, (str, Path)):
@@ -39,10 +48,7 @@ def load_audio(file: io.BytesIO | str | Path) -> tuple[torch.Tensor, int]:
         try:
             waveform, sample_rate = torchaudio.load(path)
         except Exception:
-            audio_np, sample_rate = librosa.load(path, sr=None, mono=False)
-            waveform = torch.from_numpy(audio_np).float()
-            if waveform.ndim == 1:
-                waveform = waveform.unsqueeze(0)
+            waveform, sample_rate = _load_via_soundfile(path)
     else:
         suffix = ".wav"
         if hasattr(file, "name") and file.name:
@@ -56,10 +62,7 @@ def load_audio(file: io.BytesIO | str | Path) -> tuple[torch.Tensor, int]:
             try:
                 waveform, sample_rate = torchaudio.load(tmp_path)
             except Exception:
-                audio_np, sample_rate = librosa.load(tmp_path, sr=None, mono=False)
-                waveform = torch.from_numpy(audio_np).float()
-                if waveform.ndim == 1:
-                    waveform = waveform.unsqueeze(0)
+                waveform, sample_rate = _load_via_soundfile(tmp_path)
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
