@@ -9,7 +9,7 @@ import streamlit as st
 import torch
 from transformers import AutoFeatureExtractor
 
-from model import PRETRAINED_MODEL, load_model
+from model import MODEL_PATH, PRETRAINED_MODEL, load_model
 from utils import (
     ID2LABEL,
     LABEL2ID,
@@ -20,12 +20,6 @@ from utils import (
     preprocess_audio,
     transcribe_audio,
 )
-
-# ---------------------------------------------------------------------------
-# Konfigurasi path — ubah MODEL_PATH jika nama/lokasi checkpoint berbeda
-# ---------------------------------------------------------------------------
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "models" / "ser_wavlm_v7_best.pt"
 
 # ---------------------------------------------------------------------------
 # Konfigurasi STT (Speech-to-Text) — Whisper via transformers
@@ -714,8 +708,6 @@ def render_result_card(summary: dict) -> None:
 
 
 def check_model_ready(device_name: str) -> tuple[bool, str | None]:
-    if not MODEL_PATH.exists():
-        return False, "File model tidak ditemukan."
     try:
         load_ser_model(str(MODEL_PATH), device_name)
         load_feature_extractor()

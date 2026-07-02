@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import gdown
 import torch
 import torch.nn as nn
 from transformers import WavLMModel
@@ -10,6 +13,12 @@ PRETRAINED_MODEL = "microsoft/wavlm-base-plus"
 HIDDEN_SIZE = 768
 NUM_LABELS = 6
 DEFAULT_DROPOUT = 0.35
+
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / "models" / "ser_wavlm_v7_best.pt"
+
+# Ganti ID ini dengan file ID Google Drive checkpoint kamu
+MODEL_GDRIVE_FILE_ID = "1bdzrBfjqrfejiNbnOBpIi6jFR32_hpVo"
 
 
 class AttentionPooling(nn.Module):
@@ -118,13 +127,38 @@ def _extract_state_dict(checkpoint: object) -> dict[str, torch.Tensor]:
     )
 
 
+def ensure_model_downloaded(model_path: Path | str | None = None) -> Path:
+    """Unduh checkpoint dari Google Drive jika file belum ada secara lokal."""
+    path = Path(model_path) if model_path is not None else MODEL_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if path.exists():
+        return path
+
+    if not MODEL_GDRIVE_FILE_ID or MODEL_GDRIVE_FILE_ID == "PASTE_FILE_ID_DI_SINI":
+        raise FileNotFoundError(
+            f"File model tidak ditemukan: {path}\n"
+            "Set MODEL_GDRIVE_FILE_ID di model.py atau letakkan checkpoint secara manual."
+        )
+
+    print("Downloading model from Google Drive...")
+    url = f"https://drive.google.com/uc?id={MODEL_GDRIVE_FILE_ID}"
+    gdown.download(url, str(path), quiet=False)
+
+    if not path.exists():
+        raise RuntimeError(f"Unduhan model gagal. File tidak ditemukan: {path}")
+
+    return path
+
+
 def load_model(
-    model_path: str,
-    device: torch.device | str,
+    model_path: str | Path | None = None,
+    device: torch.device | str = "cpu",
     dropout: float = DEFAULT_DROPOUT,
 ) -> WavLMSERModel:
-    """Buat instance model dan muat bobot dari checkpoint lokal."""
+    """Buat instance model dan muat bobot dari checkpoint lokal (auto-download jika perlu)."""
     device = torch.device(device)
+    resolved_path = ensure_model_downloaded(model_path)
 
     try:
         model = WavLMSERModel(dropout=dropout)
@@ -135,14 +169,14 @@ def load_model(
         ) from exc
 
     try:
-        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+        checkpoint = torch.load(resolved_path, map_location=device, weights_only=False)
     except FileNotFoundError as exc:
         raise FileNotFoundError(
-            f"File model tidak ditemukan: {model_path}"
+            f"File model tidak ditemukan: {resolved_path}"
         ) from exc
     except Exception as exc:
         raise RuntimeError(
-            f"Gagal membaca checkpoint: {model_path}. Error: {exc}"
+            f"Gagal membaca checkpoint: {resolved_path}. Error: {exc}"
         ) from exc
 
     state_dict = _strip_module_prefix(_extract_state_dict(checkpoint))
