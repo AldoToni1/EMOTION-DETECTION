@@ -1,15 +1,34 @@
+# EMOTION-DETECT
 
-# SER WavLM Model Package
+Proyek **Speech Emotion Recognition (SER)** berbasis WavLM + aplikasi Streamlit dengan **Whisper STT**.
 
-Model        : microsoft/wavlm-base-plus
-Best epoch   : 15
-Best val acc : 73.98%
-Test acc     : 74.42%
-Labels       : netral, senang, sedih, marah, takut, jijik
+## Struktur
 
-## File utama
-- `ser_wavlm_best.pt` : checkpoint model terbaik
-- `config_wavlm.json` : konfigurasi training dan label
-- `feature_extractor/` : konfigurasi HuggingFace feature extractor
-- `metadata_split_wavlm.csv` : split train/val/test
-- `evaluasi_test_wavlm.csv` : hasil prediksi test set
+```
+EMOTION-DETECT/
+├── requirements.txt          # Dependensi project
+├── ser-streamlit-app/        # Aplikasi inference (Streamlit)
+│   ├── app.py
+│   ├── model.py
+│   ├── utils.py
+│   └── models/
+│       └── ser_wavlm_v7_best.pt
+└── README.md
+```
+
+## Instalasi & menjalankan
+
+```bash
+pip install -r requirements.txt
+cd ser-streamlit-app
+streamlit run app.py
+```
+
+Buka: http://localhost:8501
+
+## Model aktif
+
+- **Checkpoint:** `ser-streamlit-app/models/ser_wavlm_v7_best.pt`
+- **Backbone:** `microsoft/wavlm-base-plus`
+- **Test accuracy (v7):** ~77.5%
+- **STT:** Whisper `openai/whisper-small` (via transformers)

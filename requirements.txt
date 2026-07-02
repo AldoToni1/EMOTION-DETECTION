@@ -1,0 +1,12 @@
+# Dependensi utama — Speech Emotion Recognition + Whisper STT
+# Install: pip install -r requirements.txt
+# Jalankan: cd ser-streamlit-app && streamlit run app.py
+
+streamlit>=1.28.0
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.36.0
+numpy>=1.24.0
+pandas>=2.0.0
+librosa>=0.10.0
+soundfile>=0.12.0
