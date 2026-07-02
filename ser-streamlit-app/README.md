@@ -10,7 +10,18 @@ Aplikasi ini **hanya melakukan inferensi/prediksi** — tidak ada proses trainin
 - Prediksi 6 kelas emosi: netral, senang, sedih, marah, takut, jijik
 - Confidence score dan probabilitas per kelas
 - Bar chart visualisasi probabilitas
+- **Transkrip teks (Speech-to-Text)** dari audio menggunakan Whisper
 - Informasi audio: nama file, durasi, sample rate, jumlah kanal
+
+## Speech-to-Text (STT)
+
+- Menggunakan **Whisper** (`openai/whisper-small`) via `transformers`, **tanpa perlu FFmpeg**
+  (audio sudah di-decode oleh `torchaudio`/`librosa` lalu disuapkan langsung sebagai waveform).
+- Transkrip memakai **audio penuh** (bukan potongan 4 detik yang dipakai untuk analisis emosi).
+- Bahasa transkrip default: Indonesia (ubah `WHISPER_LANGUAGE` di `app.py`).
+- Untuk CPU yang lambat, ganti `WHISPER_MODEL` ke `"openai/whisper-base"` agar lebih ringan
+  (akurasi transkrip sedikit menurun). Set `ENABLE_STT = False` untuk menonaktifkan STT.
+- Unduhan model Whisper terjadi sekali di awal (butuh internet), setelah itu berjalan lokal.
 
 ## Instalasi
 
@@ -41,7 +52,7 @@ ser-streamlit-app/
 ├── README.md
 │
 ├── models/
-│   └── wavlm_ser_best.pt   # Checkpoint model terlatih
+│   └── ser_wavlm_v7_best.pt   # Checkpoint model terlatih (v7)
 │
 └── assets/
     └── sample_audio/       # (Opsional) contoh file audio uji
@@ -86,4 +97,4 @@ Checkpoint yang didukung:
 
 - Aplikasi berjalan di **CPU** maupun **GPU (CUDA)**. CPU lebih lambat namun tetap fungsional.
 - Semua path menggunakan **relative path** sehingga dapat dijalankan secara lokal.
-- Model checkpoint asli (`ser_wavlm_best.pt`) telah disalin ke `models/wavlm_ser_best.pt`.
+- Model checkpoint: `models/ser_wavlm_v7_best.pt` (ubah `MODEL_PATH` di `app.py` jika perlu).

@@ -17,7 +17,7 @@ import torchaudio
 from model import WavLMSERModel
 
 TARGET_SAMPLE_RATE = 16000
-MAX_DURATION_SECONDS = 6.0
+MAX_DURATION_SECONDS = 4.0
 MAX_SAMPLES = int(TARGET_SAMPLE_RATE * MAX_DURATION_SECONDS)
 
 LABEL2ID = {
@@ -123,6 +123,24 @@ def get_audio_info(file: io.BytesIO | str | Path) -> dict[str, Any]:
         "channels": channels,
         "num_samples": int(waveform.shape[-1]),
     }
+
+
+def get_transcription_waveform(file: io.BytesIO | str | Path) -> "np.ndarray":
+    """Ambil waveform mono 16 kHz PENUH (tanpa potong) untuk transkrip STT."""
+    waveform, sample_rate = load_audio(file)
+    if sample_rate != TARGET_SAMPLE_RATE:
+        waveform = torchaudio.functional.resample(waveform, sample_rate, TARGET_SAMPLE_RATE)
+    return waveform.squeeze(0).numpy().astype("float32")
+
+
+def transcribe_audio(asr_pipeline: Any, waveform: "np.ndarray", language: str = "indonesian") -> str:
+    """Transkrip audio ke teks menggunakan pipeline Whisper (ASR)."""
+    output = asr_pipeline(
+        {"raw": waveform, "sampling_rate": TARGET_SAMPLE_RATE},
+        generate_kwargs={"language": language, "task": "transcribe"},
+        chunk_length_s=30,
+    )
+    return str(output.get("text", "")).strip()
 
 
 def predict_emotion(

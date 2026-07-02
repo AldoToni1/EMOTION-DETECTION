@@ -14,16 +14,26 @@ from utils import (
     ID2LABEL,
     LABEL2ID,
     get_audio_info,
+    get_transcription_waveform,
     load_audio,
     predict_emotion,
     preprocess_audio,
+    transcribe_audio,
 )
 
 # ---------------------------------------------------------------------------
 # Konfigurasi path — ubah MODEL_PATH jika nama/lokasi checkpoint berbeda
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "models" / "wavlm_ser_best.pt"
+MODEL_PATH = BASE_DIR / "models" / "ser_wavlm_v7_best.pt"
+
+# ---------------------------------------------------------------------------
+# Konfigurasi STT (Speech-to-Text) — Whisper via transformers
+# Ganti ke "openai/whisper-base" agar lebih cepat di CPU (akurasi sedikit turun)
+# ---------------------------------------------------------------------------
+ENABLE_STT = True
+WHISPER_MODEL = "openai/whisper-small"
+WHISPER_LANGUAGE = "indonesian"
 
 EMOTION_ICONS = {
     "netral": "😐",
@@ -237,6 +247,33 @@ def inject_custom_css() -> None:
             color: #64748b;
             text-transform: uppercase;
             letter-spacing: 0.06em;
+        }
+        .transcript-card {
+            background: linear-gradient(145deg, rgba(30,41,59,0.85), rgba(15,23,42,0.78));
+            border: 1px solid rgba(96,165,250,0.28);
+            border-left: 4px solid #3b82f6;
+            border-radius: 14px;
+            padding: 1.1rem 1.35rem;
+            margin: 0.5rem 0 1rem 0;
+        }
+        .transcript-head {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #60a5fa;
+            margin-bottom: 0.45rem;
+        }
+        .transcript-text {
+            font-size: 1.05rem;
+            color: #f1f5f9;
+            line-height: 1.55;
+            font-style: italic;
+        }
+        .transcript-empty {
+            font-size: 0.95rem;
+            color: rgba(148,163,184,0.85);
+            font-style: italic;
         }
         .prob-row-label {
             display: flex;
@@ -468,6 +505,19 @@ def load_feature_extractor():
     return AutoFeatureExtractor.from_pretrained(PRETRAINED_MODEL)
 
 
+@st.cache_resource(show_spinner="Memuat model Whisper (STT)...")
+def load_asr_pipeline(model_name: str, device_name: str):
+    """Cache pipeline Whisper untuk transkrip audio ke teks."""
+    from transformers import pipeline
+
+    device = 0 if device_name == "cuda" else -1
+    return pipeline(
+        "automatic-speech-recognition",
+        model=model_name,
+        device=device,
+    )
+
+
 def format_file_size(size_bytes: int | None) -> str:
     if not size_bytes:
         return "—"
@@ -509,15 +559,35 @@ def summarize_prediction(result: dict) -> dict:
     }
 
 
+def render_transcript_card(text: str) -> None:
+    if text:
+        body = f'<div class="transcript-text">"{text}"</div>'
+    else:
+        body = (
+            '<div class="transcript-empty">Tidak ada ucapan yang terdeteksi '
+            "(audio mungkin tanpa kata-kata yang jelas).</div>"
+        )
+    st.markdown(
+        f"""
+        <div class="transcript-card">
+            <div class="transcript-head">📝 Transkrip Ucapan (Speech-to-Text)</div>
+            {body}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_hero() -> None:
     st.markdown(
         """
         <div class="hero-card">
             <div class="hero-title">Speech Emotion Recognition</div>
             <p class="hero-subtitle">
-                Unggah suara, dengarkan preview, lalu sistem akan memprediksi emosi dominan dari audio.
+                Unggah suara, dengarkan preview, lalu sistem akan memprediksi emosi dominan
+                sekaligus menampilkan transkrip teks dari audio.
             </p>
-            <span class="hero-badge">WavLM-based Model</span>
+            <span class="hero-badge">WavLM + Whisper STT</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -853,8 +923,23 @@ def main() -> None:
     if preprocess_info["trimmed"]:
         st.warning(
             f"Audio dipotong menjadi maksimal {preprocess_info['max_duration_sec']} detik "
-            f"(durasi asli: {preprocess_info['original_duration_sec']} dtk)."
+            f"untuk analisis emosi (durasi asli: {preprocess_info['original_duration_sec']} dtk). "
+            "Transkrip tetap memakai audio penuh."
         )
+
+    if ENABLE_STT:
+        try:
+            with st.spinner("Mentranskrip ucapan ke teks (Whisper)..."):
+                asr = load_asr_pipeline(WHISPER_MODEL, device_name)
+                uploaded_file.seek(0)
+                stt_waveform = get_transcription_waveform(uploaded_file)
+                transcript = transcribe_audio(asr, stt_waveform, WHISPER_LANGUAGE)
+            render_transcript_card(transcript)
+        except Exception as exc:
+            st.info(
+                "Transkrip teks tidak tersedia (model STT gagal dimuat atau audio tidak dapat "
+                f"ditranskrip).\n\nDetail: {exc}"
+            )
 
     st.markdown("#### Top 3 Emosi")
     render_top3_cards(result["probabilities_df"])

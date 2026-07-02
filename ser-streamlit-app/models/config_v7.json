@@ -1,0 +1,29 @@
+{
+  "version": "v7-base-plus-optimized-noise-aware",
+  "model_source": "microsoft/wavlm-base-plus",
+  "emosi_list": [
+    "netral",
+    "senang",
+    "sedih",
+    "marah",
+    "takut",
+    "jijik"
+  ],
+  "max_seconds": 4.0,
+  "dropout": 0.3,
+  "label_smoothing": 0.1,
+  "mixup_alpha": 0.2,
+  "mixup_prob": 0.25,
+  "cremad_bobot_per_kelas": {
+    "netral": 0.957,
+    "marah": 0.606,
+    "jijik": 0.3,
+    "takut": 0.32,
+    "senang": 0.26,
+    "sedih": 0.164
+  },
+  "noise_candidates_count": 155,
+  "best_epoch": 12,
+  "best_val_acc": 0.7639436835974035,
+  "test_acc": 0.7746478873239436
+}
