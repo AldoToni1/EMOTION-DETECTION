@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 
-from ser_model import WavLMSERModel
+from model import WavLMSERModel
 
 TARGET_SAMPLE_RATE = 16000
 MAX_DURATION_SECONDS = 4.0

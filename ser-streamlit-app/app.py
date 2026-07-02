@@ -9,7 +9,7 @@ import streamlit as st
 import torch
 from transformers import AutoFeatureExtractor
 
-from ser_model import MODEL_PATH, PRETRAINED_MODEL, load_model
+from model import load_model
 from utils import (
     ID2LABEL,
     LABEL2ID,
@@ -23,8 +23,9 @@ from utils import (
 
 # ---------------------------------------------------------------------------
 # Konfigurasi STT (Speech-to-Text) — Whisper via transformers
-# Ganti ke "openai/whisper-base" agar lebih cepat di CPU (akurasi sedikit turun)
 # ---------------------------------------------------------------------------
+SER_BACKBONE = "microsoft/wavlm-base-plus"
+MODEL_DISPLAY_PATH = "models/ser_wavlm_v7_best.pt"
 ENABLE_STT = True
 WHISPER_MODEL = "openai/whisper-small"
 WHISPER_LANGUAGE = "indonesian"
@@ -488,15 +489,15 @@ def inject_custom_css() -> None:
 
 
 @st.cache_resource(show_spinner="Memuat model WavLM...")
-def load_ser_model(model_path: str, device_name: str):
+def load_ser_model(device_name: str):
     device = torch.device(device_name)
-    model = load_model(model_path, device)
+    model = load_model(device=device)
     return model, device
 
 
 @st.cache_resource(show_spinner="Memuat feature extractor...")
 def load_feature_extractor():
-    return AutoFeatureExtractor.from_pretrained(PRETRAINED_MODEL)
+    return AutoFeatureExtractor.from_pretrained(SER_BACKBONE)
 
 
 @st.cache_resource(show_spinner="Memuat model Whisper (STT)...")
@@ -709,7 +710,7 @@ def render_result_card(summary: dict) -> None:
 
 def check_model_ready(device_name: str) -> tuple[bool, str | None]:
     try:
-        load_ser_model(str(MODEL_PATH), device_name)
+        load_ser_model(device_name)
         load_feature_extractor()
         return True, None
     except FileNotFoundError as exc:
@@ -775,14 +776,14 @@ def render_sidebar(device_name: str) -> None:
             st.error(model_error)
 
         with st.expander("⚙️ Detail Teknis"):
-            st.caption(f"Backbone: {PRETRAINED_MODEL}")
+            st.caption(f"Backbone: {SER_BACKBONE}")
             st.caption("Mode: inferensi saja (bukan training)")
-            st.code(str(MODEL_PATH), language=None)
+            st.code(MODEL_DISPLAY_PATH, language=None)
 
 
 def run_prediction(uploaded_file, device_name: str) -> tuple[dict, dict]:
     with st.spinner("Menganalisis pola emosi dari audio..."):
-        model, device = load_ser_model(str(MODEL_PATH), device_name)
+        model, device = load_ser_model(device_name)
         processor = load_feature_extractor()
         uploaded_file.seek(0)
         waveform, sample_rate = load_audio(uploaded_file)
@@ -970,7 +971,7 @@ def main() -> None:
         st.dataframe(prob_raw_df, use_container_width=True, hide_index=True)
 
         st.markdown("**Path Model**")
-        st.code(str(MODEL_PATH), language=None)
+        st.code(MODEL_DISPLAY_PATH, language=None)
 
 
 if __name__ == "__main__":
