@@ -33,7 +33,7 @@ ID2LABEL = {idx: label for label, idx in LABEL2ID.items()}
 
 
 def _load_via_soundfile(path: str) -> tuple[torch.Tensor, int]:
-    """Fallback decode audio tanpa librosa/numba (kompatibel Python 3.14)."""
+    """Fallback decode WAV/FLAC via soundfile."""
     data, sample_rate = sf.read(path, dtype="float32", always_2d=True)
     waveform = torch.from_numpy(data.T).float()
     if waveform.ndim == 1:
@@ -41,14 +41,33 @@ def _load_via_soundfile(path: str) -> tuple[torch.Tensor, int]:
     return waveform, int(sample_rate)
 
 
+def _load_via_librosa(path: str) -> tuple[torch.Tensor, int]:
+    """Fallback decode MP3/audio umum via librosa (lazy import)."""
+    import librosa
+
+    audio_np, sample_rate = librosa.load(path, sr=None, mono=False)
+    waveform = torch.from_numpy(audio_np).float()
+    if waveform.ndim == 1:
+        waveform = waveform.unsqueeze(0)
+    return waveform, int(sample_rate)
+
+
+def _decode_audio_file(path: str) -> tuple[torch.Tensor, int]:
+    """torchaudio → librosa → soundfile."""
+    try:
+        return torchaudio.load(path)
+    except Exception:
+        try:
+            return _load_via_librosa(path)
+        except Exception:
+            return _load_via_soundfile(path)
+
+
 def load_audio(file: io.BytesIO | str | Path) -> tuple[torch.Tensor, int]:
     """Muat audio dari file upload Streamlit (.wav / .mp3)."""
     if isinstance(file, (str, Path)):
         path = str(file)
-        try:
-            waveform, sample_rate = torchaudio.load(path)
-        except Exception:
-            waveform, sample_rate = _load_via_soundfile(path)
+        waveform, sample_rate = _decode_audio_file(path)
     else:
         suffix = ".wav"
         if hasattr(file, "name") and file.name:
@@ -59,10 +78,7 @@ def load_audio(file: io.BytesIO | str | Path) -> tuple[torch.Tensor, int]:
             tmp_path = tmp.name
 
         try:
-            try:
-                waveform, sample_rate = torchaudio.load(tmp_path)
-            except Exception:
-                waveform, sample_rate = _load_via_soundfile(tmp_path)
+            waveform, sample_rate = _decode_audio_file(tmp_path)
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
