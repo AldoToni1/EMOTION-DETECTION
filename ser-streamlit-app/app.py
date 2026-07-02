@@ -14,11 +14,10 @@ from utils import (
     ID2LABEL,
     LABEL2ID,
     get_audio_info,
-    get_transcription_waveform,
     load_audio,
     predict_emotion,
     preprocess_audio,
-    transcribe_audio,
+    safe_transcribe,
 )
 
 # ---------------------------------------------------------------------------
@@ -500,17 +499,12 @@ def load_feature_extractor():
     return AutoFeatureExtractor.from_pretrained(SER_BACKBONE)
 
 
-@st.cache_resource(show_spinner="Memuat model Whisper (STT)...")
-def load_asr_pipeline(model_name: str, device_name: str):
-    """Cache pipeline Whisper untuk transkrip audio ke teks."""
-    from transformers import pipeline
+@st.cache_resource(show_spinner="Memuat Whisper (STT)...")
+def load_whisper_lazy(model_name: str, device_name: str):
+    """Cache pipeline Whisper — hanya dimuat saat user pertama kali minta transkrip."""
+    from utils import create_whisper_pipeline
 
-    device = 0 if device_name == "cuda" else -1
-    return pipeline(
-        "automatic-speech-recognition",
-        model=model_name,
-        device=device,
-    )
+    return create_whisper_pipeline(model_name, device_name)
 
 
 def format_file_size(size_bytes: int | None) -> str:
@@ -921,17 +915,20 @@ def main() -> None:
         )
 
     if ENABLE_STT:
-        try:
-            with st.spinner("Mentranskrip ucapan ke teks (Whisper)..."):
-                asr = load_asr_pipeline(WHISPER_MODEL, device_name)
-                uploaded_file.seek(0)
-                stt_waveform = get_transcription_waveform(uploaded_file)
-                transcript = transcribe_audio(asr, stt_waveform, WHISPER_LANGUAGE)
-            render_transcript_card(transcript)
-        except Exception as exc:
-            st.info(
-                "Transkrip teks tidak tersedia (model STT gagal dimuat atau audio tidak dapat "
-                f"ditranskrip).\n\nDetail: {exc}"
+        with st.spinner("Mentranskrip ucapan ke teks (Whisper)..."):
+            uploaded_file.seek(0)
+            transcript, stt_ok = safe_transcribe(
+                uploaded_file,
+                WHISPER_MODEL,
+                device_name,
+                WHISPER_LANGUAGE,
+                pipeline_loader=load_whisper_lazy,
+            )
+        render_transcript_card(transcript)
+        if not stt_ok:
+            st.caption(
+                "Catatan: transkripsi Whisper tidak tersedia sementara. "
+                "Analisis emosi tetap berjalan normal."
             )
 
     st.markdown("#### Top 3 Emosi")

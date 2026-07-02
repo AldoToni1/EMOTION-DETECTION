@@ -143,6 +143,66 @@ def transcribe_audio(asr_pipeline: Any, waveform: "np.ndarray", language: str = 
     return str(output.get("text", "")).strip()
 
 
+STT_FALLBACK_MESSAGE = "Transkripsi sementara tidak tersedia. Silakan coba lagi nanti."
+
+_whisper_pipeline: Any | None = None
+_whisper_config_key: tuple[str, str] | None = None
+
+
+def create_whisper_pipeline(model_name: str, device_name: str) -> Any:
+    """Buat pipeline Whisper ASR — hanya dipanggil on-demand, bukan saat startup."""
+    from transformers import pipeline
+
+    device = 0 if device_name == "cuda" else -1
+    return pipeline(
+        "automatic-speech-recognition",
+        model=model_name,
+        device=device,
+    )
+
+
+def get_whisper_pipeline(
+    model_name: str,
+    device_name: str,
+    *,
+    loader: Any | None = None,
+) -> Any:
+    """Lazy-load pipeline Whisper; pertama kali dipanggil saat user minta transkrip."""
+    global _whisper_pipeline, _whisper_config_key
+
+    if loader is not None:
+        return loader(model_name, device_name)
+
+    key = (model_name, device_name)
+    if _whisper_pipeline is None or _whisper_config_key != key:
+        _whisper_pipeline = create_whisper_pipeline(model_name, device_name)
+        _whisper_config_key = key
+    return _whisper_pipeline
+
+
+def safe_transcribe(
+    file: io.BytesIO | str | Path,
+    model_name: str,
+    device_name: str,
+    language: str = "indonesian",
+    *,
+    pipeline_loader: Any | None = None,
+) -> tuple[str, bool]:
+    """Transkrip audio ke teks. Tidak pernah raise; mengembalikan (teks, sukses)."""
+    try:
+        if hasattr(file, "seek"):
+            file.seek(0)
+        waveform = get_transcription_waveform(file)
+        asr = get_whisper_pipeline(model_name, device_name, loader=pipeline_loader)
+        text = transcribe_audio(asr, waveform, language)
+        cleaned = str(text).strip()
+        if not cleaned:
+            return "Tidak ada ucapan yang terdeteksi.", True
+        return cleaned, True
+    except Exception:
+        return STT_FALLBACK_MESSAGE, False
+
+
 def predict_emotion(
     model: WavLMSERModel,
     processor: Any,
