@@ -35,6 +35,7 @@ WHISPER_MODEL = (
     else "openai/whisper-small"
 )
 WHISPER_LANGUAGE = "indonesian"
+IS_CLOUD = os.environ.get("STREAMLIT_SERVER_HEADLESS") == "true"
 
 EMOTION_ICONS = {
     "netral": "😐",
@@ -790,7 +791,17 @@ def run_prediction(uploaded_file, device_name: str) -> tuple[dict, dict]:
         waveform, sample_rate = load_audio(uploaded_file)
         processed_waveform, preprocess_info = preprocess_audio(waveform, sample_rate)
         result = predict_emotion(model, processor, processed_waveform, device)
+        gc.collect()
     return result, preprocess_info
+
+
+def _upload_key(uploaded_file) -> tuple:
+    return (uploaded_file.name, getattr(uploaded_file, "size", None))
+
+
+def _clear_prediction_cache() -> None:
+    st.session_state.pop("prediction_cache", None)
+    st.session_state.pop("prediction_file_key", None)
 
 
 def main() -> None:
@@ -826,8 +837,14 @@ def main() -> None:
     )
 
     if uploaded_file is None:
+        _clear_prediction_cache()
         render_empty_state()
         return
+
+    file_key = _upload_key(uploaded_file)
+    if st.session_state.get("prediction_file_key") != file_key:
+        _clear_prediction_cache()
+        st.session_state["prediction_file_key"] = file_key
 
     display_name = Path(uploaded_file.name).name if uploaded_file.name else "unknown"
 
@@ -864,6 +881,14 @@ def main() -> None:
     uploaded_file.seek(0)
     st.audio(uploaded_file)
 
+    if IS_CLOUD and ENABLE_STT:
+        want_stt = st.checkbox(
+            "Sertakan transkripsi Whisper (opsional, butuh lebih banyak RAM)",
+            value=False,
+        )
+    else:
+        want_stt = ENABLE_STT
+
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
     predict_clicked = st.button(
         "Analisis Emosi",
@@ -872,34 +897,45 @@ def main() -> None:
         disabled=not model_ready,
     )
 
-    if not predict_clicked:
+    if predict_clicked and model_ready:
+        try:
+            uploaded_file.seek(0)
+            result, preprocess_info = run_prediction(uploaded_file, device_name)
+            st.session_state["prediction_cache"] = {
+                "result": result,
+                "preprocess_info": preprocess_info,
+                "want_stt": want_stt,
+            }
+        except FileNotFoundError as exc:
+            st.error(f"File model tidak ditemukan.\n\n{exc}")
+            return
+        except RuntimeError as exc:
+            error_text = str(exc)
+            if "tidak cocok" in error_text.lower() or "checkpoint" in error_text.lower():
+                st.error(f"Checkpoint tidak cocok dengan arsitektur model.\n\n{error_text}")
+            elif "HuggingFace" in error_text or "pretrained" in error_text.lower():
+                st.error(
+                    "Gagal memuat model HuggingFace. "
+                    "Periksa koneksi internet untuk unduhan pertama kali.\n\n"
+                    f"{error_text}"
+                )
+            else:
+                st.error(f"Terjadi kesalahan saat memuat model.\n\n{error_text}")
+            return
+        except Exception:
+            st.error(
+                "File audio tidak dapat diproses. "
+                "Coba gunakan file .wav atau .mp3 dengan durasi pendek dan kualitas suara jelas."
+            )
+            return
+
+    cache = st.session_state.get("prediction_cache")
+    if cache is None:
         return
 
-    try:
-        uploaded_file.seek(0)
-        result, preprocess_info = run_prediction(uploaded_file, device_name)
-    except FileNotFoundError as exc:
-        st.error(f"File model tidak ditemukan.\n\n{exc}")
-        return
-    except RuntimeError as exc:
-        error_text = str(exc)
-        if "tidak cocok" in error_text.lower() or "checkpoint" in error_text.lower():
-            st.error(f"Checkpoint tidak cocok dengan arsitektur model.\n\n{error_text}")
-        elif "HuggingFace" in error_text or "pretrained" in error_text.lower():
-            st.error(
-                "Gagal memuat model HuggingFace. "
-                "Periksa koneksi internet untuk unduhan pertama kali.\n\n"
-                f"{error_text}"
-            )
-        else:
-            st.error(f"Terjadi kesalahan saat memuat model.\n\n{error_text}")
-        return
-    except Exception:
-        st.error(
-            "File audio tidak dapat diproses. "
-            "Coba gunakan file .wav atau .mp3 dengan durasi pendek dan kualitas suara jelas."
-        )
-        return
+    result = cache["result"]
+    preprocess_info = cache["preprocess_info"]
+    want_stt = cache.get("want_stt", False)
 
     st.markdown(
         """
@@ -921,23 +957,26 @@ def main() -> None:
             "Transkrip tetap memakai audio penuh."
         )
 
-    if ENABLE_STT:
-        with st.spinner("Mentranskrip ucapan ke teks (Whisper)..."):
-            uploaded_file.seek(0)
-            transcript, stt_ok = safe_transcribe(
-                uploaded_file,
-                WHISPER_MODEL,
-                device_name,
-                WHISPER_LANGUAGE,
-                pipeline_loader=load_whisper_lazy,
-            )
-        render_transcript_card(transcript)
-        if not stt_ok:
+    if want_stt:
+        if "transcript" not in cache:
+            with st.spinner("Mentranskrip ucapan ke teks (Whisper)..."):
+                uploaded_file.seek(0)
+                transcript, stt_ok = safe_transcribe(
+                    uploaded_file,
+                    WHISPER_MODEL,
+                    device_name,
+                    WHISPER_LANGUAGE,
+                    pipeline_loader=load_whisper_lazy,
+                )
+                cache["transcript"] = transcript
+                cache["stt_ok"] = stt_ok
+                gc.collect()
+        render_transcript_card(cache["transcript"])
+        if not cache.get("stt_ok", True):
             st.caption(
                 "Catatan: transkripsi Whisper tidak tersedia sementara. "
                 "Analisis emosi tetap berjalan normal."
             )
-        gc.collect()
 
     st.markdown("#### Top 3 Emosi")
     render_top3_cards(result["probabilities_df"])
