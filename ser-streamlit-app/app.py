@@ -7,7 +7,11 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 import torch
-from transformers import AutoFeatureExtractor
+
+try:
+    from transformers import AutoFeatureExtractor
+except ImportError:
+    from transformers import Wav2Vec2FeatureExtractor as AutoFeatureExtractor
 
 from model import load_model
 from utils import (
