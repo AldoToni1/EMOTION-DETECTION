@@ -27,15 +27,12 @@ from utils import (
 # ---------------------------------------------------------------------------
 SER_BACKBONE = "microsoft/wavlm-base-plus"
 MODEL_DISPLAY_PATH = "models/ser_wavlm_v7_best.pt"
-ENABLE_STT = True
-# whisper-tiny di cloud (hemat RAM); whisper-small di lokal (lebih akurat)
-WHISPER_MODEL = (
-    "openai/whisper-tiny"
-    if os.environ.get("STREAMLIT_SERVER_HEADLESS") == "true"
-    else "openai/whisper-small"
-)
-WHISPER_LANGUAGE = "indonesian"
 IS_CLOUD = os.environ.get("STREAMLIT_SERVER_HEADLESS") == "true"
+ENABLE_STT = not IS_CLOUD  # STT hanya di lokal; cloud gratis RAM tidak cukup untuk 2 model
+WHISPER_MODEL = "openai/whisper-small" if not IS_CLOUD else "openai/whisper-tiny"
+WHISPER_LANGUAGE = "indonesian"
+# Cloud gratis ~1 GB RAM — aman untuk 1 prediksi per sesi, refresh (F5) untuk file baru
+MAX_CLOUD_PREDICTIONS = 1
 
 EMOTION_ICONS = {
     "netral": "😐",
@@ -804,6 +801,11 @@ def _clear_prediction_cache() -> None:
     st.session_state.pop("prediction_file_key", None)
 
 
+def _reset_cloud_session() -> None:
+    st.session_state.pop("cloud_prediction_count", None)
+    _clear_prediction_cache()
+
+
 def main() -> None:
     inject_custom_css()
     device_name = "cuda" if torch.cuda.is_available() else "cpu"
@@ -837,7 +839,7 @@ def main() -> None:
     )
 
     if uploaded_file is None:
-        _clear_prediction_cache()
+        _reset_cloud_session()
         render_empty_state()
         return
 
@@ -881,23 +883,33 @@ def main() -> None:
     uploaded_file.seek(0)
     st.audio(uploaded_file)
 
-    if IS_CLOUD and ENABLE_STT:
-        want_stt = st.checkbox(
-            "Sertakan transkripsi Whisper (opsional, butuh lebih banyak RAM)",
-            value=False,
-        )
-    else:
-        want_stt = ENABLE_STT
+    if IS_CLOUD:
+        used = st.session_state.get("cloud_prediction_count", 0)
+        if used >= MAX_CLOUD_PREDICTIONS:
+            st.info(
+                f"Mode cloud: maksimal **{MAX_CLOUD_PREDICTIONS} analisis per sesi** "
+                "(batas RAM server gratis). "
+                "**Refresh halaman (F5)** lalu upload file baru untuk analisis berikutnya."
+            )
 
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    cloud_limit_reached = IS_CLOUD and st.session_state.get("cloud_prediction_count", 0) >= MAX_CLOUD_PREDICTIONS
     predict_clicked = st.button(
         "Analisis Emosi",
         type="primary",
         use_container_width=True,
-        disabled=not model_ready,
+        disabled=not model_ready or cloud_limit_reached,
     )
+    reanalyze_clicked = False
+    if st.session_state.get("prediction_cache") is not None and not cloud_limit_reached:
+        reanalyze_clicked = st.button("Analisis Ulang", use_container_width=True, disabled=not model_ready)
 
-    if predict_clicked and model_ready:
+    want_stt = ENABLE_STT
+    should_predict = model_ready and (predict_clicked or reanalyze_clicked)
+    if should_predict and reanalyze_clicked:
+        _clear_prediction_cache()
+
+    if should_predict and not st.session_state.get("prediction_cache"):
         try:
             uploaded_file.seek(0)
             result, preprocess_info = run_prediction(uploaded_file, device_name)
@@ -906,6 +918,10 @@ def main() -> None:
                 "preprocess_info": preprocess_info,
                 "want_stt": want_stt,
             }
+            if IS_CLOUD:
+                st.session_state["cloud_prediction_count"] = (
+                    st.session_state.get("cloud_prediction_count", 0) + 1
+                )
         except FileNotFoundError as exc:
             st.error(f"File model tidak ditemukan.\n\n{exc}")
             return
