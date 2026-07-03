@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
+import gc
+import os
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 import torch
-
-try:
-    from transformers import AutoFeatureExtractor
-except ImportError:
-    from transformers import Wav2Vec2FeatureExtractor as AutoFeatureExtractor
+from transformers import Wav2Vec2FeatureExtractor
 
 from model import load_model
 from utils import (
@@ -30,7 +28,12 @@ from utils import (
 SER_BACKBONE = "microsoft/wavlm-base-plus"
 MODEL_DISPLAY_PATH = "models/ser_wavlm_v7_best.pt"
 ENABLE_STT = True
-WHISPER_MODEL = "openai/whisper-small"
+# whisper-tiny di cloud (hemat RAM); whisper-small di lokal (lebih akurat)
+WHISPER_MODEL = (
+    "openai/whisper-tiny"
+    if os.environ.get("STREAMLIT_SERVER_HEADLESS") == "true"
+    else "openai/whisper-small"
+)
 WHISPER_LANGUAGE = "indonesian"
 
 EMOTION_ICONS = {
@@ -500,7 +503,7 @@ def load_ser_model(device_name: str):
 
 @st.cache_resource(show_spinner="Memuat feature extractor...")
 def load_feature_extractor():
-    return AutoFeatureExtractor.from_pretrained(SER_BACKBONE)
+    return Wav2Vec2FeatureExtractor.from_pretrained(SER_BACKBONE)
 
 
 @st.cache_resource(show_spinner="Memuat Whisper (STT)...")
@@ -934,6 +937,7 @@ def main() -> None:
                 "Catatan: transkripsi Whisper tidak tersedia sementara. "
                 "Analisis emosi tetap berjalan normal."
             )
+        gc.collect()
 
     st.markdown("#### Top 3 Emosi")
     render_top3_cards(result["probabilities_df"])
